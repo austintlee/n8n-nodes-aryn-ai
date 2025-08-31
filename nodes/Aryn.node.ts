@@ -1,11 +1,15 @@
+import FormData from 'form-data';
 import {
 	IExecuteFunctions,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	IRequestOptions,
+	//IRequestOptions,
 	NodeConnectionType,
-	IDataObject,
+	//IDataObject,
+	//NodeOperationError,
+	IHttpRequestOptions,
+	BINARY_ENCODING
 } from 'n8n-workflow';
 
 
@@ -61,7 +65,40 @@ export class Aryn implements INodeType {
 				required: true,
 				placeholder: 'e.g data',
 				hint: 'The name of the input binary field containing the file to be extracted',
-	},
+			},
+			{
+				displayName: "Text mode",
+				name: "textMode",
+				type: "options",
+				default: "auto",
+				noDataExpression: true,
+				options: [
+					{
+						name: "Auto",
+						value: "auto",
+						description: "Let Aryn decide the best text extraction method",
+						action: "auto"
+					},
+					{
+						name: "Inline",
+						value: "inline_fallback_to_ocr",
+						description: "Let Aryn decide the best text extraction method",
+						action: "inline_fallback_to_ocr"
+					},
+					{
+						name: "OCR Standard",
+						value: "ocr_standard",
+						description: "Use Optical Character Recognition to extract text",
+						action: "ocr_standard"
+					},
+					{
+						name: "OCR Vision",
+						value: "ocr_vision",
+						description: "Use a vision language model to augment OCR extraction",
+						action: "ocr_vision"
+					}
+				],
+			}
 		]
 	};
 	// The execute method will go here
@@ -72,29 +109,41 @@ export class Aryn implements INodeType {
 		const operation = this.getNodeParameter('operation', 0) as string;
 		let responseData;
 
+		const textMode = this.getNodeParameter('textMode', 0) as string;
 		// For each item, make an API call to create a contact
 		for (let i = 0; i < items.length; i++) {
 			const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i) as string;
 			const binaryData = this.helpers.assertBinaryData(i, binaryPropertyName);
 
-			if (operation === 'parse') {
+			let buffer: Buffer;
+			if (binaryData.id) {
+				const stream = await this.helpers.getBinaryStream(binaryData.id);
+				buffer = await this.helpers.binaryToBuffer(stream);
+			} else {
+				buffer = Buffer.from(binaryData.data, BINARY_ENCODING);
+			}
 
-				const body: IDataObject = {
-					files: {
-						pdf: binaryData.data,
-					}
-				};
+			const formData = new FormData();
+			formData.append('file', buffer, {
+				filename: binaryData.fileName,
+				contentType: binaryData.mimeType,
+			});
+			formData.append('options', JSON.stringify({ text_mode: textMode }));
+			this.logger.info(`Form Data: ${JSON.stringify(formData)}`);
+			if (operation === 'parse') {
 				// Make HTTP request
-				const options: IRequestOptions = {
+				const options: IHttpRequestOptions = {
 					headers: {
 						'Accept': 'application/json',
+						'source': 'n8n',
 					},
 					method: 'POST',
-					body: body,
-					uri: `https://api.aryn.ai/v1/document/partition`,
+					body: formData,
+					url: `https://api.aryn.ai/v1/document/partition`,
 					json: true,
+
 				};
-				responseData = await this.helpers.requestWithAuthentication.call(this, 'arynApi', options);
+				responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'arynApi', options);
 				returnData.push(responseData);
 			}
 		}
