@@ -8,11 +8,15 @@ import {
 export class ArynApi implements ICredentialType {
 	name = 'arynApi';
 	displayName = 'Aryn API';
+	documentationUrl = 'https://docs.aryn.ai/';
 	properties: INodeProperties[] = [
 		{
 			displayName: 'API Key',
 			name: 'apiKey',
 			type: 'string',
+			typeOptions: {
+				password: true,
+			},
 			default: '',
 		},
 	];
@@ -29,6 +33,7 @@ export class ArynApi implements ICredentialType {
 	test: ICredentialTestRequest = {
 		request: {
 			baseURL: 'https://api.aryn.ai',
+			method: "POST",
 			url: '/v1/token/validate',
 		},
 	};
